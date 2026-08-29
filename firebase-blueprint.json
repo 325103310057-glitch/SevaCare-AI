@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and role information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["CAREGIVER", "PATIENT", "ADMIN", "DOCTOR"] },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "PatientProfile": {
+      "title": "PatientProfile",
+      "description": "Elderly patient record synced with care team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caregiverId": { "type": "string" },
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "preferredLanguage": { "type": "string" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactPhone": { "type": "string" },
+        "activeDoses": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "caregiverId"]
+    },
+    "CareAlert": {
+      "title": "CareAlert",
+      "description": "Alerts generated for caregiver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caregiverId": { "type": "string" },
+        "patientId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "priority": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "acknowledged": { "type": "boolean" }
+      },
+      "required": ["id", "title", "priority"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Gemini chatbot conversation log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "model", "system"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "groundingSources": { "type": "array" }
+      },
+      "required": ["id", "role", "text"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sevacare-backend
+
+jwt:
+  secret: ${JWT_SECRET:sevacare-jwt-super-secret-key-2026-production-hmac-sha256-minimum-256-bits}
+  expiration:
+    seconds: ${JWT_EXPIRATION_SECONDS:86400}
+  issuer: sevacare-security-service
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID:}
+  auth-token: ${TWILIO_AUTH_TOKEN:}
+  phone-number: ${TWILIO_PHONE_NUMBER:}
+
+logging:
+  level:
+    com.sevacare.security: INFO
+    org.springframework.security: INFO

@@ -1,0 +1,11 @@
+{
+  "name": "Caretaker",
+  "description": "AI-powered voice-first elderly care assistant and friendly AI companion providing medicine reminders, daily conversations, storytelling, and caregiver monitoring.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
