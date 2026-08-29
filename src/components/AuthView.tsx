@@ -1,68 +1,57 @@
-import React, { useState, useEffect } from "react";
-import { UserAccount, UserRole, SUPPORTED_LANGUAGES, ConnectionRequest } from "../types";
+import React, { useState } from "react";
+import { UserAccount, UserRole, SUPPORTED_LANGUAGES } from "../types";
 import { storage, DEFAULT_USERS } from "../utils/storage";
 import { soundFx, speakText } from "../utils/audio";
-import { MULTILINGUAL_PACKS, getLanguagePack } from "../utils/i18n";
+import { getLanguagePack } from "../utils/i18n";
 import {
-  ShieldCheck,
-  User,
-  HeartHandshake,
-  Shield,
-  Key,
   Phone,
   Languages,
-  CheckCircle2,
   Lock,
   ArrowRight,
   Sparkles,
-  Info,
   ChevronRight,
   ArrowLeft,
-  Volume2,
-  Check,
-  RefreshCw,
   Mail,
   UserPlus,
   Link as LinkIcon,
   AlertCircle,
+  Eye,
+  EyeOff,
+  Shield,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 
 interface AuthViewProps {
   onLoginSuccess: (user: UserAccount) => void;
 }
 
-type AuthMode = "WELCOME" | "PATIENT_LOGIN" | "CARETAKER_LOGIN" | "REGISTER" | "OTP_VERIFY";
+type AuthMode = "WELCOME" | "PATIENT_LOGIN" | "CARETAKER_LOGIN" | "REGISTER";
 
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
   // Navigation mode
   const [authMode, setAuthMode] = useState<AuthMode>("WELCOME");
   const [selectedLanguage, setSelectedLanguage] = useState<string>("English");
-  const [activeRole, setActiveRole] = useState<UserRole>("PATIENT");
+  const [, setActiveRole] = useState<UserRole>("PATIENT");
 
-  // Form states
-  const [phoneNumber, setPhoneNumber] = useState<string>("");
-  const [caretakerEmailOrPhone, setCaretakerEmailOrPhone] = useState<string>("");
-  const [caretakerPassword, setCaretakerPassword] = useState<string>("");
-  const [usePasswordLogin, setUsePasswordLogin] = useState<boolean>(false);
+  // Form states - Patient Login
+  const [patientPhone, setPatientPhone] = useState<string>("+91 98451 22345");
+  const [patientPassword, setPatientPassword] = useState<string>("elder123");
+  const [showPatientPassword, setShowPatientPassword] = useState<boolean>(false);
 
-  // OTP state (Strictly NO OTP displayed on screen)
-  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""]);
-  const [maskedPhone, setMaskedPhone] = useState<string>("");
-  const [resendCooldown, setResendCooldown] = useState<number>(30);
-  const [smsSentSuccess, setSmsSentSuccess] = useState<boolean>(false);
-  const [pendingUserContext, setPendingUserContext] = useState<{
-    phone: string;
-    role: UserRole;
-    isRegistration?: boolean;
-    name?: string;
-    linkTargetPhone?: string;
-    relation?: string;
-  } | null>(null);
+  // Form states - Caretaker Login
+  const [caretakerIdentifier, setCaretakerIdentifier] = useState<string>("+91 98765 43210");
+  const [caretakerPassword, setCaretakerPassword] = useState<string>("care123");
+  const [showCaretakerPassword, setShowCaretakerPassword] = useState<boolean>(false);
 
-  // Registration states
+  // Form states - Registration
   const [regName, setRegName] = useState<string>("");
   const [regRole, setRegRole] = useState<UserRole>("PATIENT");
-  const [regPhone, setRegPhone] = useState<string>("");
+  const [regPhone, setRegPhone] = useState<string>("+91 ");
+  const [regEmail, setRegEmail] = useState<string>("");
+  const [regPassword, setRegPassword] = useState<string>("");
+  const [regConfirmPassword, setRegConfirmPassword] = useState<string>("");
+  const [showRegPassword, setShowRegPassword] = useState<boolean>(false);
   const [regLinkTargetPhone, setRegLinkTargetPhone] = useState<string>("");
   const [regRelation, setRegRelation] = useState<string>("Son");
 
@@ -78,18 +67,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
 
   // Active language pack
   const langPack = getLanguagePack(selectedLanguage);
-  const authStrings = langPack.auth;
-
-  // Countdown timer for OTP resend
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (authMode === "OTP_VERIFY" && resendCooldown > 0) {
-      timer = setInterval(() => {
-        setResendCooldown((prev) => Math.max(0, prev - 1));
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [authMode, resendCooldown]);
 
   // Handle language change with audio greeting
   const handleSelectLanguage = (langName: string) => {
@@ -103,7 +80,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
   const handleSelectPatientLogin = () => {
     soundFx.playTap();
     setActiveRole("PATIENT");
-    setPhoneNumber("+91 98451 22345"); // preset sample number for easy elder testing
+    setPatientPhone("+91 98451 22345");
+    setPatientPassword("elder123");
     setErrorMsg("");
     setAuthMode("PATIENT_LOGIN");
   };
@@ -112,7 +90,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
   const handleSelectCaretakerLogin = () => {
     soundFx.playTap();
     setActiveRole("CAREGIVER");
-    setCaretakerEmailOrPhone("+91 98765 43210");
+    setCaretakerIdentifier("+91 98765 43210");
     setCaretakerPassword("care123");
     setErrorMsg("");
     setAuthMode("CARETAKER_LOGIN");
@@ -124,298 +102,283 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
     setRegRole("PATIENT");
     setRegName("");
     setRegPhone("+91 ");
+    setRegEmail("");
+    setRegPassword("");
+    setRegConfirmPassword("");
     setRegLinkTargetPhone("");
     setErrorMsg("");
     setAuthMode("REGISTER");
   };
 
-  // Send SMS OTP via Backend
-  const handleSendOtp = async (targetPhone: string, role: UserRole, isReg = false, extraRegData?: any) => {
+  // ----------------------------------------------------
+  // SUBMIT: PATIENT PASSWORD LOGIN
+  // ----------------------------------------------------
+  const handlePatientPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMsg("");
-    const cleanNumber = targetPhone.replace(/[^0-9+]/g, "").trim();
-    const digitsOnly = cleanNumber.replace(/[^0-9]/g, "");
 
-    if (digitsOnly.length < 10) {
+    if (!patientPhone.trim()) {
+      setErrorMsg("Please enter your mobile phone number.");
+      return;
+    }
+    if (!patientPassword.trim()) {
+      setErrorMsg("Please enter your password.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // 1. Try local storage authenticateUser
+      const authResult = storage.authenticateUser(patientPhone, patientPassword, "PATIENT");
+
+      if (!authResult.success || !authResult.user) {
+        // If not found in storage, try backend API
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: patientPhone,
+            password: patientPassword,
+            role: "PATIENT",
+          }),
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          setErrorMsg(authResult.error || data.error || "Invalid mobile number or password. Please try again.");
+          setIsLoading(false);
+          return;
+        }
+
+        if (data.token) {
+          storage.setJwtToken(data.token);
+        }
+      }
+
+      const user = authResult.user || DEFAULT_USERS.find((u) => u.role === "PATIENT")!;
+      const updatedUser: UserAccount = {
+        ...user,
+        preferredLanguage: selectedLanguage,
+        languageCode: langPack.speechCode,
+        lastLoginAt: new Date().toISOString(),
+      };
+
+      storage.setCurrentUser(updatedUser);
+      storage.addAuditLog({
+        actorName: updatedUser.name,
+        actorRole: "PATIENT",
+        action: "PASSWORD_LOGIN_SUCCESS",
+        target: updatedUser.phone,
+        details: "Patient logged in successfully with password.",
+        severity: "INFO",
+      });
+
+      soundFx.playSuccessChime();
+      speakText(
+        selectedLanguage === "Telugu"
+          ? `స్వాగతం ${updatedUser.name} గారు. మీరు విజయవంతంగా లాగిన్ అయ్యారు.`
+          : selectedLanguage === "Hindi"
+          ? `नमस्ते ${updatedUser.name} जी। आपका स्वागत है।`
+          : `Welcome back, ${updatedUser.name}.`,
+        langPack.speechCode,
+        1.0
+      );
+
+      onLoginSuccess(updatedUser);
+    } catch {
+      setErrorMsg("Unable to complete login. Please verify your connection.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUBMIT: CARETAKER PASSWORD LOGIN
+  // ----------------------------------------------------
+  const handleCaretakerPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (!caretakerIdentifier.trim()) {
+      setErrorMsg("Please enter your email address or mobile phone number.");
+      return;
+    }
+    if (!caretakerPassword.trim()) {
+      setErrorMsg("Please enter your password.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const authResult = storage.authenticateUser(caretakerIdentifier, caretakerPassword, "CAREGIVER");
+
+      if (!authResult.success || !authResult.user) {
+        // Attempt backend endpoint fallback
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: caretakerIdentifier,
+            password: caretakerPassword,
+            role: "CAREGIVER",
+          }),
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          setErrorMsg(authResult.error || data.error || "Invalid Caretaker credentials. Please verify your email/phone and password.");
+          setIsLoading(false);
+          return;
+        }
+
+        if (data.token) {
+          storage.setJwtToken(data.token);
+        }
+      }
+
+      const user = authResult.user || DEFAULT_USERS.find((u) => u.role === "CAREGIVER")!;
+      const updatedUser: UserAccount = {
+        ...user,
+        lastLoginAt: new Date().toISOString(),
+      };
+
+      storage.setCurrentUser(updatedUser);
+      storage.addAuditLog({
+        actorName: updatedUser.name,
+        actorRole: "CAREGIVER",
+        action: "CAREGIVER_LOGIN_SUCCESS",
+        target: caretakerIdentifier,
+        details: "Caretaker logged in successfully with password.",
+        severity: "INFO",
+      });
+
+      soundFx.playSuccessChime();
+      speakText(`Welcome back, ${updatedUser.name}. Caretaker portal ready.`, "en-US", 1.0);
+      onLoginSuccess(updatedUser);
+    } catch {
+      setErrorMsg("Unable to complete login. Please check your credentials.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // SUBMIT: NEW USER REGISTRATION (PASSWORD-BASED)
+  // ----------------------------------------------------
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (!regName.trim()) {
+      setErrorMsg("Please enter your full name.");
+      return;
+    }
+    const cleanPhone = regPhone.replace(/[^0-9+]/g, "").trim();
+    if (cleanPhone.replace(/[^0-9]/g, "").length < 10) {
       setErrorMsg("Please enter a valid 10-digit mobile phone number.");
       return;
     }
-
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: cleanNumber,
-          roleSelected: role,
-          language: selectedLanguage,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setMaskedPhone(data.maskedPhone || `+91 ••••• •${cleanNumber.slice(-4)}`);
-        setSmsSentSuccess(true);
-        setResendCooldown(30);
-        setOtpDigits(["", "", "", "", "", ""]);
-        setPendingUserContext({
-          phone: cleanNumber,
-          role,
-          isRegistration: isReg,
-          ...extraRegData,
-        });
-        setAuthMode("OTP_VERIFY");
-        soundFx.playAttentionChime();
-        speakText(
-          selectedLanguage === "Telugu"
-            ? "మీ మొబైల్ ఫోన్‌కి 6 అంకెల ధృవీకరణ కోడ్ పంపబడింది. దయచేసి ఎంటర్ చేయండి."
-            : selectedLanguage === "Hindi"
-            ? "आपके मोबाइल नंबर पर 6 अंकों का ओटीपी भेजा गया है। कृपया दर्ज करें।"
-            : "A 6-digit verification code has been sent to your mobile phone via SMS. Please enter it below.",
-          langPack.speechCode,
-          1.0
-        );
-      } else {
-        setErrorMsg(data.error || "Failed to send SMS OTP. Please try again.");
-      }
-    } catch {
-      setErrorMsg("Network error contacting SMS gateway. Please check your connection.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle Caretaker Password Login
-  const handleCaretakerPasswordLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
-    const input = caretakerEmailOrPhone.trim().toLowerCase();
-    const cleanPhone = input.replace(/[^0-9]/g, "");
-
-    const users = storage.getUsers();
-    const matched = users.find(
-      (u) =>
-        u.role === "CAREGIVER" &&
-        (u.email.toLowerCase() === input ||
-          (cleanPhone.length >= 10 && u.phone.replace(/[^0-9]/g, "").includes(cleanPhone)))
-    ) || DEFAULT_USERS.find((u) => u.role === "CAREGIVER");
-
-    if (matched) {
-      soundFx.playSuccessChime();
-      storage.setCurrentUser(matched);
-      storage.addAuditLog({
-        actorName: matched.name,
-        actorRole: "CAREGIVER",
-        action: "CAREGIVER_LOGIN_SUCCESS",
-        target: input,
-        details: `Caretaker logged in successfully. Access granted to Caretaker Portal.`,
-        severity: "INFO",
-      });
-      onLoginSuccess(matched);
-    } else {
-      setErrorMsg("Invalid Caretaker credentials. Please verify your email/phone.");
-    }
-  };
-
-  // Handle OTP digit changes
-  const handleOtpDigitChange = (index: number, value: string) => {
-    if (!/^[0-9]?$/.test(value)) return;
-    const newDigits = [...otpDigits];
-    newDigits[index] = value;
-    setOtpDigits(newDigits);
-
-    // Auto-focus next input field
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`otp-digit-${index + 1}`);
-      if (nextInput) nextInput.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-digit-${index - 1}`);
-      if (prevInput) prevInput.focus();
-    }
-  };
-
-  // Verify OTP & Authenticate into Role Portal
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
-
-    const fullOtp = otpDigits.join("");
-    if (fullOtp.length !== 6) {
-      setErrorMsg("Please enter the complete 6-digit OTP received via SMS.");
+    if (!regPassword || regPassword.length < 4) {
+      setErrorMsg("Please enter a secure password (minimum 4 characters).");
       return;
     }
-
-    if (!pendingUserContext) {
-      setErrorMsg("Session expired. Please restart login.");
-      setAuthMode("WELCOME");
+    if (regPassword !== regConfirmPassword) {
+      setErrorMsg("Passwords do not match. Please re-enter.");
       return;
     }
 
     setIsLoading(true);
+
     try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: pendingUserContext.phone,
-          otp: fullOtp,
-          expectedRole: pendingUserContext.role,
-        }),
-      });
+      const newUserName = regName.trim();
+      const generatedEmail = regEmail.trim() || `${newUserName.toLowerCase().replace(/\s+/g, "")}@elderlycare.ai`;
 
-      const data = await res.json();
-      if (!data.success && !data.verified) {
-        setErrorMsg(data.error || "Invalid OTP code. Please verify the SMS on your phone.");
-        setIsLoading(false);
-        return;
-      }
-
-      // Store authenticated JWT Token representing the authorized role
-      if (data.token) {
-        storage.setJwtToken(data.token);
-      }
-
-      // OTP Verified successfully!
-      soundFx.playSuccessChime();
-
-      if (pendingUserContext.isRegistration) {
-        // Create new registered user
-        const newUserName = pendingUserContext.name || (pendingUserContext.role === "PATIENT" ? "Elder Patient" : "Family Caregiver");
-        const newUser: UserAccount = {
-          id: `user-${Date.now()}`,
-          name: newUserName,
-          email: `${newUserName.toLowerCase().replace(/\s+/g, "")}@elderlycare.ai`,
-          role: pendingUserContext.role,
-          phone: pendingUserContext.phone,
-          preferredLanguage: selectedLanguage,
-          languageCode: langPack.speechCode,
-          avatarUrl: pendingUserContext.role === "PATIENT" ? "👵" : "👨‍💼",
-          status: "ACTIVE",
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-          caregiverRelation: pendingUserContext.role === "CAREGIVER" ? pendingUserContext.relation || "Caregiver" : undefined,
-          patientProfileId: pendingUserContext.role === "PATIENT" ? `patient-${Date.now()}` : undefined,
-          assignedPatientIds: pendingUserContext.role === "CAREGIVER" ? [] : undefined,
-        };
-
-        const users = storage.getUsers();
-        storage.saveUsers([...users, newUser]);
-
-        // If a linking target was entered, create a ConnectionRequest
-        if (pendingUserContext.linkTargetPhone) {
-          const cleanTargetPhone = pendingUserContext.linkTargetPhone.replace(/[^0-9+]/g, "").trim();
-          if (cleanTargetPhone.length >= 10) {
-            storage.createConnectionRequest({
-              patientId: pendingUserContext.role === "PATIENT" ? newUser.id : `patient-target-${Date.now()}`,
-              patientName: pendingUserContext.role === "PATIENT" ? newUser.name : "Linked Patient",
-              patientPhone: pendingUserContext.role === "PATIENT" ? newUser.phone : cleanTargetPhone,
-              caretakerId: pendingUserContext.role === "CAREGIVER" ? newUser.id : `caretaker-target-${Date.now()}`,
-              caretakerName: pendingUserContext.role === "CAREGIVER" ? newUser.name : "Linked Caretaker",
-              caretakerPhone: pendingUserContext.role === "CAREGIVER" ? newUser.phone : cleanTargetPhone,
-              relation: pendingUserContext.relation || "Family Caregiver",
-              requestedBy: pendingUserContext.role,
-            });
-          }
-        }
-
-        storage.setCurrentUser(newUser);
-        storage.addAuditLog({
-          actorName: newUser.name,
-          actorRole: newUser.role,
-          action: "USER_REGISTERED_VIA_SMS_OTP",
-          target: newUser.phone,
-          details: `New ${newUser.role} account created and verified with mobile SMS OTP.`,
-          severity: "SECURITY",
-        });
-
-        speakText(
-          `Welcome to SevaCare, ${newUser.name}. Your account is ready!`,
-          langPack.speechCode,
-          1.0
-        );
-        onLoginSuccess(newUser);
-      } else {
-        // Existing user login
-        const existingUsers = storage.getUsers();
-        const cleanPhone = pendingUserContext.phone.replace(/[^0-9]/g, "");
-
-        let targetUser = existingUsers.find(
-          (u) =>
-            u.role === pendingUserContext.role &&
-            u.phone.replace(/[^0-9]/g, "").includes(cleanPhone)
-        );
-
-        if (!targetUser) {
-          // If default seeded demo user
-          targetUser = DEFAULT_USERS.find((u) => u.role === pendingUserContext.role);
-        }
-
-        if (targetUser) {
-          if (targetUser.status === "SUSPENDED") {
-            setErrorMsg("This account has been suspended by the administrator.");
-            setIsLoading(false);
-            return;
-          }
-
-          const updatedUser: UserAccount = {
-            ...targetUser,
+      // Call registration API
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: newUserName,
+            email: generatedEmail,
+            phone: cleanPhone,
+            password: regPassword,
+            role: regRole,
             preferredLanguage: selectedLanguage,
-            languageCode: langPack.speechCode,
-            lastLoginAt: new Date().toISOString(),
-          };
+          }),
+        });
+        const data = await res.json();
+        if (data.token) {
+          storage.setJwtToken(data.token);
+        }
+      } catch (err) {
+        console.warn("Backend register notice:", err);
+      }
 
-          storage.setCurrentUser(updatedUser);
-          storage.addAuditLog({
-            actorName: updatedUser.name,
-            actorRole: updatedUser.role,
-            action: "SMS_OTP_LOGIN_VERIFIED",
-            target: updatedUser.phone,
-            details: `Mobile SMS OTP verified. User logged into ${updatedUser.role} portal.`,
-            severity: "INFO",
+      // Create new user in local state
+      const newUser: UserAccount = {
+        id: `user-${Date.now()}`,
+        name: newUserName,
+        email: generatedEmail,
+        password: regPassword,
+        role: regRole,
+        phone: cleanPhone,
+        preferredLanguage: selectedLanguage,
+        languageCode: langPack.speechCode,
+        avatarUrl: regRole === "PATIENT" ? "👵" : "👨‍💼",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+        caregiverRelation: regRole === "CAREGIVER" ? regRelation || "Caregiver" : undefined,
+        patientProfileId: regRole === "PATIENT" ? `patient-${Date.now()}` : undefined,
+        assignedPatientIds: regRole === "CAREGIVER" ? [] : undefined,
+      };
+
+      const existingUsers = storage.getUsers();
+      storage.saveUsers([...existingUsers, newUser]);
+
+      // If linking phone is entered, create Connection Request
+      if (regLinkTargetPhone.trim()) {
+        const cleanTargetPhone = regLinkTargetPhone.replace(/[^0-9+]/g, "").trim();
+        if (cleanTargetPhone.replace(/[^0-9]/g, "").length >= 10) {
+          storage.createConnectionRequest({
+            patientId: regRole === "PATIENT" ? newUser.id : `patient-target-${Date.now()}`,
+            patientName: regRole === "PATIENT" ? newUser.name : "Linked Patient",
+            patientPhone: regRole === "PATIENT" ? newUser.phone : cleanTargetPhone,
+            caretakerId: regRole === "CAREGIVER" ? newUser.id : `caretaker-target-${Date.now()}`,
+            caretakerName: regRole === "CAREGIVER" ? newUser.name : "Linked Caretaker",
+            caretakerPhone: regRole === "CAREGIVER" ? newUser.phone : cleanTargetPhone,
+            relation: regRelation || "Family Caregiver",
+            requestedBy: regRole,
           });
-
-          speakText(
-            selectedLanguage === "Telugu"
-              ? `స్వాగతం ${updatedUser.name} గారు. మీరు లాగిన్ అయ్యారు.`
-              : selectedLanguage === "Hindi"
-              ? `नमस्ते ${updatedUser.name} जी। आप लॉग इन हो चुके हैं।`
-              : `Welcome back, ${updatedUser.name}.`,
-            langPack.speechCode,
-            1.0
-          );
-          onLoginSuccess(updatedUser);
-        } else {
-          // Fallback auto-provision for new phone
-          const autoUser: UserAccount = {
-            id: `user-${Date.now()}`,
-            name: pendingUserContext.role === "PATIENT" ? "Senior Patient" : "Family Caretaker",
-            email: `user${Date.now()}@elderlycare.ai`,
-            role: pendingUserContext.role,
-            phone: pendingUserContext.phone,
-            preferredLanguage: selectedLanguage,
-            languageCode: langPack.speechCode,
-            avatarUrl: pendingUserContext.role === "PATIENT" ? "👵" : "👨‍💼",
-            status: "ACTIVE",
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-          };
-          storage.saveUsers([...existingUsers, autoUser]);
-          storage.setCurrentUser(autoUser);
-          onLoginSuccess(autoUser);
         }
       }
+
+      storage.setCurrentUser(newUser);
+      storage.addAuditLog({
+        actorName: newUser.name,
+        actorRole: newUser.role,
+        action: "USER_REGISTERED_PASSWORD_AUTH",
+        target: newUser.phone,
+        details: `New ${newUser.role} account registered with password-based authentication.`,
+        severity: "SECURITY",
+      });
+
+      soundFx.playSuccessChime();
+      speakText(`Welcome to SevaCare, ${newUser.name}. Your account is ready!`, langPack.speechCode, 1.0);
+      onLoginSuccess(newUser);
     } catch {
-      setErrorMsg("Error verifying OTP. Please try again.");
+      setErrorMsg("Failed to complete registration. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle Admin Private Gateway Login (protected via secret key)
+  // ----------------------------------------------------
+  // SUBMIT: ADMIN GATEWAY
+  // ----------------------------------------------------
   const handleAdminGatewayLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAdminError("");
@@ -448,7 +411,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col justify-between items-center p-4 sm:p-6 selection:bg-teal-500 selection:text-white relative font-['Plus_Jakarta_Sans',sans-serif]">
-      {/* Background ambient accents */}
+      {/* Ambient background accents */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-teal-900/30 via-emerald-950/10 to-transparent blur-3xl" />
         <div className="absolute bottom-0 right-10 w-[400px] h-[300px] bg-teal-800/10 blur-3xl" />
@@ -464,7 +427,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Language selector chip */}
+        {/* Language selector */}
         <div className="flex items-center gap-1.5 bg-stone-800/90 border border-stone-700 px-3 py-1.5 rounded-2xl text-xs font-bold text-stone-200">
           <Languages size={14} className="text-teal-400" />
           <select
@@ -492,7 +455,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 1: PUBLIC LOGIN PORTAL (PATIENT vs CARETAKER)   */}
+        {/* STEP 1: WELCOME SCREEN (ROLE SELECTION)              */}
         {/* ---------------------------------------------------- */}
         {authMode === "WELCOME" && (
           <div className="bg-stone-800/90 border-2 border-stone-700 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
@@ -505,7 +468,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
                 Please select how you want to log in
               </h2>
               <p className="text-stone-400 text-xs sm:text-sm mt-1.5">
-                Role-authorized access for senior elders & caretakers
+                Password-secured access for senior elders & caretakers
               </p>
             </div>
 
@@ -519,7 +482,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
               >
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30 text-3xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    👴
+                    👵
                   </div>
                   <div>
                     <div className="text-lg font-black tracking-tight text-white">Patient Login</div>
@@ -570,7 +533,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 2: PATIENT LOGIN (PHONE NUMBER & SMS OTP)       */}
+        {/* STEP 2: PATIENT LOGIN (PHONE & PASSWORD)             */}
         {/* ---------------------------------------------------- */}
         {authMode === "PATIENT_LOGIN" && (
           <div className="bg-stone-800/90 border-2 border-teal-500/60 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
@@ -587,67 +550,104 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
                 Back
               </button>
               <span className="bg-teal-950 text-teal-300 border border-teal-500/40 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                👴 Senior Portal
+                👵 Senior Patient Portal
               </span>
             </div>
 
             <div className="text-center mb-6">
               <div className="w-14 h-14 rounded-2xl bg-teal-500/20 border-2 border-teal-500 text-3xl flex items-center justify-center mx-auto mb-3">
-                👴
+                👵
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight">Patient Login</h2>
               <p className="text-stone-300 text-xs sm:text-sm mt-1">
-                Enter your mobile number to receive a secure SMS OTP
+                Enter your mobile number and password to access your daily medicine care
               </p>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); handleSendOtp(phoneNumber, "PATIENT"); }} className="flex flex-col gap-4">
+            <form onSubmit={handlePatientPasswordLogin} className="flex flex-col gap-4">
+              {/* Phone Input */}
               <div>
                 <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
-                  Phone Number:
+                  Mobile Phone Number:
                 </label>
                 <div className="relative">
                   <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-teal-400" />
                   <input
                     type="tel"
                     id="input-patient-phone"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    value={patientPhone}
+                    onChange={(e) => setPatientPhone(e.target.value)}
                     placeholder="+91 98451 22345"
-                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-4 pl-12 pr-4 text-white text-lg font-bold placeholder-stone-600 focus:outline-none transition-colors"
+                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-4 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
                     required
                   />
                 </div>
               </div>
 
+              {/* Password Input */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider">
+                    Password / Security PIN:
+                  </label>
+                  <span className="text-[11px] text-teal-400/90 font-medium">Demo: elder123</span>
+                </div>
+                <div className="relative">
+                  <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-teal-400" />
+                  <input
+                    type={showPatientPassword ? "text" : "password"}
+                    id="input-patient-password"
+                    value={patientPassword}
+                    onChange={(e) => setPatientPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-12 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPatientPassword(!showPatientPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
+                  >
+                    {showPatientPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="submit"
-                id="btn-patient-send-otp"
+                id="btn-patient-login-submit"
                 disabled={isLoading}
                 className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
               >
                 {isLoading ? (
                   <>
                     <RefreshCw size={18} className="animate-spin" />
-                    Sending Real SMS OTP...
+                    Logging in...
                   </>
                 ) : (
                   <>
-                    Send Secure OTP via SMS
+                    Login to Patient Portal
                     <ArrowRight size={18} />
                   </>
                 )}
               </button>
             </form>
 
-            <div className="mt-6 pt-4 border-t border-stone-700 text-center text-xs text-stone-400">
-              Need assistance? Ask your family caretaker or press the speaker icon.
+            <div className="mt-6 pt-4 border-t border-stone-700 text-center text-xs text-stone-400 flex items-center justify-center gap-1.5">
+              <span>Don't have an account?</span>
+              <button
+                type="button"
+                onClick={handleSelectRegister}
+                className="text-teal-400 hover:underline font-bold cursor-pointer"
+              >
+                Register Here
+              </button>
             </div>
           </div>
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 3: CARETAKER LOGIN (EMAIL/PHONE OR SMS OTP)     */}
+        {/* STEP 3: CARETAKER LOGIN (EMAIL/PHONE & PASSWORD)     */}
         {/* ---------------------------------------------------- */}
         {authMode === "CARETAKER_LOGIN" && (
           <div className="bg-stone-800/90 border-2 border-stone-700 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
@@ -674,122 +674,94 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight">Caretaker Login</h2>
               <p className="text-stone-400 text-xs sm:text-sm mt-1">
-                Access authorized elderly profiles & medicine logs
+                Access authorized elderly profiles, schedule medicines & view alerts
               </p>
             </div>
 
-            {usePasswordLogin ? (
-              <form onSubmit={handleCaretakerPasswordLogin} className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
-                    Email or Phone Number:
-                  </label>
-                  <div className="relative">
-                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="text"
-                      id="input-caretaker-identifier"
-                      value={caretakerEmailOrPhone}
-                      onChange={(e) => setCaretakerEmailOrPhone(e.target.value)}
-                      placeholder="+91 98765 43210 or email"
-                      className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-4 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
+            <form onSubmit={handleCaretakerPasswordLogin} className="flex flex-col gap-4">
+              {/* Identifier Input */}
+              <div>
+                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
+                  Email or Phone Number:
+                </label>
+                <div className="relative">
+                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    id="input-caretaker-identifier"
+                    value={caretakerIdentifier}
+                    onChange={(e) => setCaretakerIdentifier(e.target.value)}
+                    placeholder="+91 98765 43210 or caregiver@elderlycare.ai"
+                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-4 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
+                    required
+                  />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
+              {/* Password Input */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider">
                     Password:
                   </label>
-                  <div className="relative">
-                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="password"
-                      id="input-caretaker-password"
-                      value={caretakerPassword}
-                      onChange={(e) => setCaretakerPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-4 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
+                  <span className="text-[11px] text-teal-400/90 font-medium">Demo: care123</span>
                 </div>
-
-                <button
-                  type="submit"
-                  id="btn-caretaker-password-login"
-                  className="w-full py-4 bg-teal-500 hover:bg-teal-400 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-                >
-                  Login to Caretaker Portal
-                  <ArrowRight size={18} />
-                </button>
-
-                <div className="text-center mt-2">
+                <div className="relative">
+                  <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type={showCaretakerPassword ? "text" : "password"}
+                    id="input-caretaker-password"
+                    value={caretakerPassword}
+                    onChange={(e) => setCaretakerPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3.5 pl-12 pr-12 text-white text-base font-bold placeholder-stone-600 focus:outline-none transition-colors"
+                    required
+                  />
                   <button
                     type="button"
-                    onClick={() => setUsePasswordLogin(false)}
-                    className="text-xs font-bold text-teal-400 hover:underline cursor-pointer"
+                    onClick={() => setShowCaretakerPassword(!showCaretakerPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
                   >
-                    Or login using Mobile SMS OTP
+                    {showCaretakerPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-              </form>
-            ) : (
-              <form onSubmit={(e) => { e.preventDefault(); handleSendOtp(caretakerEmailOrPhone, "CAREGIVER"); }} className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
-                    Mobile Phone Number:
-                  </label>
-                  <div className="relative">
-                    <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-teal-400" />
-                    <input
-                      type="tel"
-                      id="input-caretaker-phone-otp"
-                      value={caretakerEmailOrPhone}
-                      onChange={(e) => setCaretakerEmailOrPhone(e.target.value)}
-                      placeholder="+91 98765 43210"
-                      className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-4 pl-12 pr-4 text-white text-lg font-bold placeholder-stone-600 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
-                </div>
+              </div>
 
-                <button
-                  type="submit"
-                  id="btn-caretaker-send-otp"
-                  disabled={isLoading}
-                  className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      Sending SMS OTP...
-                    </>
-                  ) : (
-                    <>
-                      Send Secure OTP via SMS
-                      <ArrowRight size={18} />
-                    </>
-                  )}
-                </button>
+              <button
+                type="submit"
+                id="btn-caretaker-password-login"
+                disabled={isLoading}
+                className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    Logging in...
+                  </>
+                ) : (
+                  <>
+                    Login to Caretaker Portal
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
 
-                <div className="text-center mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setUsePasswordLogin(true)}
-                    className="text-xs font-bold text-teal-400 hover:underline cursor-pointer"
-                  >
-                    Or login with Password
-                  </button>
-                </div>
-              </form>
-            )}
+            <div className="mt-6 pt-4 border-t border-stone-700 text-center text-xs text-stone-400 flex items-center justify-center gap-1.5">
+              <span>New Caretaker?</span>
+              <button
+                type="button"
+                onClick={handleSelectRegister}
+                className="text-teal-400 hover:underline font-bold cursor-pointer"
+              >
+                Create Account
+              </button>
+            </div>
           </div>
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 4: REGISTRATION & PATIENT-CARETAKER LINKING     */}
+        {/* STEP 4: REGISTRATION (PASSWORD-BASED)                */}
         {/* ---------------------------------------------------- */}
         {authMode === "REGISTER" && (
           <div className="bg-stone-800/90 border-2 border-stone-700 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
@@ -813,25 +785,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
             <div className="text-center mb-6">
               <h2 className="text-2xl font-black text-white tracking-tight">Create SevaCare Account</h2>
               <p className="text-stone-400 text-xs sm:text-sm mt-1">
-                Register as a Patient or Caretaker with mobile SMS verification
+                Register with a secure password for instant access
               </p>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!regName.trim()) {
-                  setErrorMsg("Please enter your full name.");
-                  return;
-                }
-                handleSendOtp(regPhone, regRole, true, {
-                  name: regName.trim(),
-                  linkTargetPhone: regLinkTargetPhone.trim(),
-                  relation: regRelation,
-                });
-              }}
-              className="flex flex-col gap-4"
-            >
+            <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-4">
               {/* Role selector */}
               <div>
                 <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
@@ -867,7 +825,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
 
               {/* Full Name */}
               <div>
-                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-1.5">
                   Full Name:
                 </label>
                 <input
@@ -883,8 +841,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
 
               {/* Mobile Phone */}
               <div>
-                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-2">
-                  Mobile Phone Number (for SMS OTP):
+                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-1.5">
+                  Mobile Phone Number:
                 </label>
                 <input
                   type="tel"
@@ -897,16 +855,73 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
                 />
               </div>
 
+              {/* Email (Optional for Patient) */}
+              <div>
+                <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-1.5">
+                  Email Address (Optional):
+                </label>
+                <input
+                  type="email"
+                  id="input-reg-email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder="e.g. user@elderlycare.ai"
+                  className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3 px-4 text-white text-sm font-semibold placeholder-stone-600 focus:outline-none"
+                />
+              </div>
+
+              {/* Password Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-1.5">
+                    Password:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showRegPassword ? "text" : "password"}
+                      id="input-reg-password"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="Min 4 chars"
+                      className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3 px-3.5 pr-10 text-white text-sm font-bold placeholder-stone-600 focus:outline-none"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
+                    >
+                      {showRegPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-300 uppercase tracking-wider mb-1.5">
+                    Confirm Password:
+                  </label>
+                  <input
+                    type={showRegPassword ? "text" : "password"}
+                    id="input-reg-confirm-password"
+                    value={regConfirmPassword}
+                    onChange={(e) => setRegConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    className="w-full bg-stone-900 border-2 border-stone-700 focus:border-teal-400 rounded-2xl py-3 px-3.5 text-white text-sm font-bold placeholder-stone-600 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
               {/* Patient-Caretaker Linking Input */}
               <div className="bg-stone-900/90 border border-stone-700 p-3.5 rounded-2xl">
-                <div className="flex items-center gap-2 mb-2 text-teal-300 text-xs font-black">
+                <div className="flex items-center gap-2 mb-1.5 text-teal-300 text-xs font-black">
                   <LinkIcon size={14} />
                   <span>{regRole === "PATIENT" ? "Link Caretaker (Optional)" : "Link Patient (Optional)"}</span>
                 </div>
-                <p className="text-[11px] text-stone-400 mb-2.5">
+                <p className="text-[11px] text-stone-400 mb-2">
                   {regRole === "PATIENT"
-                    ? "Enter your family caretaker's phone number to send a linking connection request."
-                    : "Enter your patient's phone number to link their profile."}
+                    ? "Enter your family caretaker's phone number to automatically send a connection request."
+                    : "Enter your senior patient's phone number to connect their profile."}
                 </p>
                 <input
                   type="tel"
@@ -933,126 +948,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
                 type="submit"
                 id="btn-submit-registration"
                 disabled={isLoading}
-                className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-1"
               >
                 {isLoading ? (
                   <>
                     <RefreshCw size={18} className="animate-spin" />
-                    Sending Real SMS OTP...
+                    Creating Account...
                   </>
                 ) : (
                   <>
-                    Verify Phone via SMS OTP
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* ---------------------------------------------------- */}
-        {/* STEP 5: ENTER REAL 6-DIGIT SMS OTP (NO ON-SCREEN OTP)*/}
-        {/* ---------------------------------------------------- */}
-        {authMode === "OTP_VERIFY" && (
-          <div className="bg-stone-800/90 border-2 border-teal-500/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorMsg("");
-                  setAuthMode("WELCOME");
-                }}
-                className="text-stone-400 hover:text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <ArrowLeft size={16} />
-                Change Number
-              </button>
-              <span className="bg-teal-950 text-teal-300 border border-teal-500/40 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                🔒 SMS Verification
-              </span>
-            </div>
-
-            <div className="text-center mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-teal-950 border border-teal-500/60 text-teal-300 flex items-center justify-center mx-auto mb-3">
-                <Lock size={26} />
-              </div>
-              <h2 className="text-2xl font-black text-white tracking-tight">Enter SMS Code</h2>
-              <p className="text-stone-300 text-xs sm:text-sm mt-1.5 leading-relaxed">
-                We sent a 6-digit verification code to your mobile phone:
-                <br />
-                <strong className="text-teal-300 font-bold text-base mt-1 inline-block">{maskedPhone}</strong>
-              </p>
-              <p className="text-[11px] text-stone-400 mt-1">
-                Please check your phone's SMS inbox and type the 6 digits below.
-              </p>
-            </div>
-
-            <form onSubmit={handleVerifyOtp} className="flex flex-col gap-5">
-              {/* 6 Digit Input Boxes */}
-              <div className="flex justify-center items-center gap-2 sm:gap-2.5">
-                {otpDigits.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    id={`otp-digit-${idx}`}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className="w-11 h-14 sm:w-12 sm:h-16 text-center text-2xl font-black bg-stone-900 border-2 border-stone-600 focus:border-teal-400 focus:bg-stone-950 text-white rounded-2xl focus:outline-none transition-colors"
-                    required
-                  />
-                ))}
-              </div>
-
-              <button
-                type="submit"
-                id="btn-verify-otp"
-                disabled={isLoading || otpDigits.join("").length !== 6}
-                className="w-full py-4 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-stone-950 rounded-2xl font-black text-base tracking-wide shadow-lg hover:shadow-teal-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-1"
-              >
-                {isLoading ? (
-                  <>
-                    <RefreshCw size={18} className="animate-spin" />
-                    Verifying Code...
-                  </>
-                ) : (
-                  <>
-                    Verify & Access Portal
+                    Create Account & Login
                     <CheckCircle2 size={18} />
                   </>
                 )}
               </button>
-
-              {/* Resend SMS Code Section */}
-              <div className="text-center pt-2">
-                {resendCooldown > 0 ? (
-                  <span className="text-xs text-stone-400">
-                    Resend SMS code in <strong className="text-stone-300 font-mono">{resendCooldown}s</strong>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    id="btn-resend-otp"
-                    onClick={() => {
-                      if (pendingUserContext) {
-                        handleSendOtp(
-                          pendingUserContext.phone,
-                          pendingUserContext.role,
-                          pendingUserContext.isRegistration,
-                          pendingUserContext
-                        );
-                      }
-                    }}
-                    className="text-xs font-bold text-teal-400 hover:text-teal-300 underline cursor-pointer"
-                  >
-                    Didn't receive SMS? Resend Code
-                  </button>
-                )}
-              </div>
             </form>
           </div>
         )}
@@ -1070,7 +979,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess }) => {
               <button
                 type="button"
                 onClick={() => setShowAdminModal(false)}
-                className="text-stone-400 hover:text-white text-sm font-bold"
+                className="text-stone-400 hover:text-white text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>

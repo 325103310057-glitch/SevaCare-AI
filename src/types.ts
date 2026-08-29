@@ -6,6 +6,7 @@ export interface UserAccount {
   id: string;
   name: string;
   email: string;
+  password?: string;
   role: UserRole;
   phone: string;
   preferredLanguage: string; // e.g. "Telugu", "Hindi", "English"

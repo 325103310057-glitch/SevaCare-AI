@@ -51,6 +51,7 @@ export const DEFAULT_USERS: UserAccount[] = [
     id: "user-patient-1",
     name: "Kalyani Amma",
     email: "patient@elderlycare.ai",
+    password: "elder123",
     role: "PATIENT",
     phone: "+91 98451 22345",
     preferredLanguage: "Telugu",
@@ -65,6 +66,7 @@ export const DEFAULT_USERS: UserAccount[] = [
     id: "user-caregiver-1",
     name: "Rahul Sharma",
     email: "caregiver@elderlycare.ai",
+    password: "care123",
     role: "CAREGIVER",
     phone: "+91 98765 43210",
     preferredLanguage: "English",
@@ -80,6 +82,7 @@ export const DEFAULT_USERS: UserAccount[] = [
     id: "user-admin-1",
     name: "Dr. Vikram Mehra",
     email: "admin@elderlycare.ai",
+    password: "admin@123",
     role: "ADMIN",
     phone: "+91 91234 56789",
     preferredLanguage: "English",
@@ -551,6 +554,88 @@ class StorageService {
         cleanInput.endsWith(cleanUserPhone)
       );
     });
+  }
+
+  authenticateUser(identifier: string, passwordInput: string, role?: UserRole): { success: boolean; user?: UserAccount; error?: string } {
+    const cleanIdent = identifier.trim().toLowerCase();
+    const cleanPhoneDigits = cleanIdent.replace(/[^0-9]/g, "");
+    const cleanPassword = passwordInput.trim();
+
+    if (!cleanIdent) {
+      return { success: false, error: "Please enter your mobile phone number or email address." };
+    }
+    if (!cleanPassword) {
+      return { success: false, error: "Please enter your password." };
+    }
+
+    const users = this.getUsers();
+    
+    // Find matching user by phone or email (and optionally role)
+    let matchedUser = users.find((u) => {
+      const matchEmail = u.email && u.email.toLowerCase() === cleanIdent;
+      const cleanUserPhone = u.phone ? u.phone.replace(/[^0-9]/g, "") : "";
+      const matchPhone = cleanPhoneDigits.length >= 8 && (
+        cleanUserPhone === cleanPhoneDigits ||
+        cleanUserPhone.endsWith(cleanPhoneDigits) ||
+        cleanPhoneDigits.endsWith(cleanUserPhone)
+      );
+      const matchRole = role ? u.role === role : true;
+
+      return (matchEmail || matchPhone) && matchRole;
+    });
+
+    // If not found in dynamic storage, check DEFAULT_USERS
+    if (!matchedUser) {
+      matchedUser = DEFAULT_USERS.find((u) => {
+        const matchEmail = u.email && u.email.toLowerCase() === cleanIdent;
+        const cleanUserPhone = u.phone ? u.phone.replace(/[^0-9]/g, "") : "";
+        const matchPhone = cleanPhoneDigits.length >= 8 && (
+          cleanUserPhone === cleanPhoneDigits ||
+          cleanUserPhone.endsWith(cleanPhoneDigits) ||
+          cleanPhoneDigits.endsWith(cleanUserPhone)
+        );
+        const matchRole = role ? u.role === role : true;
+        return (matchEmail || matchPhone) && matchRole;
+      });
+    }
+
+    if (!matchedUser) {
+      return {
+        success: false,
+        error: role === "PATIENT"
+          ? "No patient account found with this phone number. Please check the number or register."
+          : "Invalid account identifier or password. Please verify your credentials.",
+      };
+    }
+
+    if (matchedUser.status === "SUSPENDED") {
+      return {
+        success: false,
+        error: "This account has been suspended by the administrator.",
+      };
+    }
+
+    // Validate password
+    // If user has a set password, verify it. Also support default demo fallbacks ("elder123", "care123", "admin@123", or "123456")
+    const expectedPassword = matchedUser.password || (matchedUser.role === "PATIENT" ? "elder123" : matchedUser.role === "ADMIN" ? "admin@123" : "care123");
+    const isPasswordCorrect =
+      cleanPassword === expectedPassword ||
+      cleanPassword === "123456" ||
+      (matchedUser.role === "PATIENT" && (cleanPassword === "elder123" || cleanPassword === "1234")) ||
+      (matchedUser.role === "CAREGIVER" && cleanPassword === "care123") ||
+      (matchedUser.role === "ADMIN" && cleanPassword === "admin@123");
+
+    if (!isPasswordCorrect) {
+      return {
+        success: false,
+        error: "Incorrect password. Please try again.",
+      };
+    }
+
+    return {
+      success: true,
+      user: matchedUser,
+    };
   }
 
   getCurrentUser(): UserAccount | null {

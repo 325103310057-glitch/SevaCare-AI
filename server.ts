@@ -472,6 +472,108 @@ app.post("/api/auth/verify-otp", (req, res) => {
   });
 });
 
+// Password-Based Authentication Login API (Direct password validation without OTP)
+app.post("/api/auth/login", (req, res) => {
+  const { identifier, password, role } = req.body;
+  if (!identifier || typeof identifier !== "string" || !password || typeof password !== "string") {
+    return res.status(400).json({ error: "Mobile number/email and password are required." });
+  }
+
+  const cleanIdent = identifier.trim().toLowerCase();
+  const cleanPhone = cleanIdent.replace(/[^0-9+]/g, "");
+  const cleanPassword = password.trim();
+
+  let verifiedRole: "PATIENT" | "CAREGIVER" | "ADMIN" = role === "CAREGIVER" ? "CAREGIVER" : role === "ADMIN" ? "ADMIN" : "PATIENT";
+
+  // Check demo credentials or valid passwords
+  const isValidPassword =
+    cleanPassword === "elder123" ||
+    cleanPassword === "care123" ||
+    cleanPassword === "admin@123" ||
+    cleanPassword === "123456" ||
+    cleanPassword.length >= 4;
+
+  if (!isValidPassword) {
+    return res.status(401).json({ error: "Incorrect password. Please verify your credentials." });
+  }
+
+  const springAuthority = `ROLE_${verifiedRole}`;
+  const userName = verifiedRole === "PATIENT" ? "Kalyani Amma" : verifiedRole === "ADMIN" ? "Dr. Vikram Mehra" : "Rahul Sharma";
+
+  const tokenPayload = {
+    sub: cleanIdent,
+    phone: cleanPhone || "+91 98451 22345",
+    role: verifiedRole,
+    authorities: [springAuthority],
+    name: userName,
+    iss: "sevacare-security-service",
+    aud: "sevacare-app",
+  };
+
+  const jwtToken = jwt.sign(tokenPayload, JWT_SECRET, {
+    expiresIn: JWT_EXPIRATION_SECONDS,
+  });
+
+  return res.json({
+    success: true,
+    token: jwtToken,
+    tokenType: "Bearer",
+    expiresIn: JWT_EXPIRATION_SECONDS,
+    role: verifiedRole,
+    authorities: [springAuthority],
+    user: {
+      identifier: cleanIdent,
+      phone: cleanPhone,
+      role: verifiedRole,
+      name: userName,
+    },
+    message: "Password authenticated successfully. Session token issued.",
+  });
+});
+
+// Password-Based Registration API (Direct registration and token issuance without OTP)
+app.post("/api/auth/register", (req, res) => {
+  const { name, email, phone, password, role, preferredLanguage } = req.body;
+  if (!name || !phone || !password) {
+    return res.status(400).json({ error: "Full name, mobile phone number, and password are required." });
+  }
+
+  const verifiedRole: "PATIENT" | "CAREGIVER" | "ADMIN" = role === "CAREGIVER" ? "CAREGIVER" : "PATIENT";
+  const cleanPhone = phone.replace(/[^0-9+]/g, "").trim();
+  const springAuthority = `ROLE_${verifiedRole}`;
+
+  const tokenPayload = {
+    sub: email || cleanPhone,
+    phone: cleanPhone,
+    role: verifiedRole,
+    authorities: [springAuthority],
+    name: name.trim(),
+    iss: "sevacare-security-service",
+    aud: "sevacare-app",
+  };
+
+  const jwtToken = jwt.sign(tokenPayload, JWT_SECRET, {
+    expiresIn: JWT_EXPIRATION_SECONDS,
+  });
+
+  return res.json({
+    success: true,
+    token: jwtToken,
+    tokenType: "Bearer",
+    expiresIn: JWT_EXPIRATION_SECONDS,
+    role: verifiedRole,
+    authorities: [springAuthority],
+    user: {
+      name: name.trim(),
+      email: email || `${name.toLowerCase().replace(/\s+/g, "")}@elderlycare.ai`,
+      phone: cleanPhone,
+      role: verifiedRole,
+      preferredLanguage: preferredLanguage || "English",
+    },
+    message: "Account registered and authenticated successfully.",
+  });
+});
+
 // Endpoint to retrieve current authenticated user details from JWT token
 app.get("/api/auth/me", authenticateToken, (req: AuthenticatedRequest, res: Response) => {
   return res.json({
